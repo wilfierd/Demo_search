@@ -410,7 +410,9 @@ export default function SearchVisualizer() {
           y: ny,
           g: tentativeG,
           h,
-          f: tentativeG + (algo === "UCS" ? 0 : h), // UCS ignores h, Greedy ignores g via comparator
+          // Always store f as g + h. Selection per algo happens in the comparator
+          // (UCS uses g, Greedy uses h, A* uses f).
+          f: tentativeG + h,
           parent: current.id,
         };
         if (inFrontierIdx === -1) {
