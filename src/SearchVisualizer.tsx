@@ -222,6 +222,22 @@ export default function SearchVisualizer() {
 
   function initRun() {
     resetRunOnly();
+    
+    // Safety checks
+    if (start.x === goal.x && start.y === goal.y) {
+      setNoPath(false);
+      refDone.current = true;
+      setRunning(false);
+      return;
+    }
+    
+    if (grid[start.x][start.y].type === "wall" || grid[goal.x][goal.y].type === "wall") {
+      setNoPath(true);
+      refDone.current = true;
+      setRunning(false);
+      return;
+    }
+    
     const sId = idOf(start.x, start.y);
     const sNode: NodeData = {
       id: sId,
@@ -321,26 +337,26 @@ export default function SearchVisualizer() {
 
     let idx = 0;
     if (algo === "BFS")
-      idx = 0; // queue
+      idx = 0; // queue (FIFO - first in, first out)
     else if (algo === "DFS")
-      idx = frontier.length - 1; // stack
+      idx = frontier.length - 1; // stack (LIFO - last in, first out)
     else if (algo === "UCS") idx = argMin(frontier, (n) => n.g);
     else if (algo === "Greedy") idx = argMin(frontier, (n) => n.h);
     else if (algo === "A*") idx = argMin(frontier, (n) => n.f);
 
     const current = frontier.splice(idx, 1)[0];
 
-    // book-keeping
-    refExplored.current.add(current.id);
-    setVisited((prev) => new Set(prev).add(current.id));
-    setFrontierSet((prev) => {
-      const s = new Set(prev);
-      s.delete(current.id);
-      return s;
-    });
-
-    // goal check
+    // goal check BEFORE adding to visited (important for optimal path finding)
     if (current.x === goal.x && current.y === goal.y) {
+      // Add to visited for accurate metrics
+      refExplored.current.add(current.id);
+      setVisited((prev) => new Set(prev).add(current.id));
+      setFrontierSet((prev) => {
+        const s = new Set(prev);
+        s.delete(current.id);
+        return s;
+      });
+
       const pathIds = reconstructPath(refCameFrom.current, current.id);
       setPathSet(new Set(pathIds));
       const visitedCount = refExplored.current.size;
@@ -387,30 +403,37 @@ export default function SearchVisualizer() {
       return;
     }
 
+    // book-keeping: add current node to visited set
+    refExplored.current.add(current.id);
+    setVisited((prev) => new Set(prev).add(current.id));
+    setFrontierSet((prev) => {
+      const s = new Set(prev);
+      s.delete(current.id);
+      return s;
+    });
+
     // expand neighbors
     let neigh = neighbors(current.x, current.y, rows, cols).filter(
       ([nx, ny]) => grid[nx][ny].type !== "wall",
     );
 
-    // DFS demo expectation: prefer going left when options tie.
-    // Because DFS uses a LIFO stack (push then pop), to explore "left first"
-    // we iterate neighbors so that left is pushed last.
+    // For DFS: We want to explore in a specific direction first to get the characteristic
+    // deep exploration behavior. Since we use the end of the array as stack top,
+    // we should add neighbors in reverse priority order (last added = first explored)
     if (algo === "DFS") {
-      const cx = current.x;
-      const cy = current.y;
-      const present = new Set(neigh.map(([nx, ny]) => idOf(nx, ny)));
-      const ordered: [number, number][] = [];
-      // Order to push: Up, Down, Right, Left (Left last => explored first)
-      const candidates: [number, number][] = [
-        [cx - 1, cy],
-        [cx + 1, cy],
-        [cx, cy + 1],
-        [cx, cy - 1],
-      ];
-      for (const [nx, ny] of candidates) {
-        if (present.has(idOf(nx, ny))) ordered.push([nx, ny]);
-      }
-      neigh = ordered;
+      // Sort neighbors to get predictable DFS behavior
+      // Priority: Left, Up, Down, Right (so Right gets explored first)
+      neigh.sort((a, b) => {
+        const [ax, ay] = a;
+        const [bx, by] = b;
+        const [cx, cy] = [current.x, current.y];
+        
+        // Calculate direction relative to current position
+        const dirA = getDirPriority(ax - cx, ay - cy);
+        const dirB = getDirPriority(bx - cx, by - cy);
+        
+        return dirB - dirA; // Reverse order for stack (higher priority pushed last)
+      });
     }
 
     for (const [nx, ny] of neigh) {
@@ -420,37 +443,75 @@ export default function SearchVisualizer() {
 
       if (refExplored.current.has(nid)) continue;
 
-      // if not in frontier OR found better g
-      const inFrontierIdx = refFrontier.current.findIndex((n) => n.id === nid);
-      const oldG = refG.current[nid];
-      if (inFrontierIdx === -1 || tentativeG < oldG) {
+      // For DFS: don't check frontier duplicates, just add to stack
+      // For other algorithms: check if node is already in frontier
+      if (algo === "DFS") {
+        // DFS: just push to stack, no duplicate frontier checking
         const h = manhattan(nx, ny, goal.x, goal.y);
-        const node: NodeData = {
+        const node = {
           id: nid,
           x: nx,
           y: ny,
           g: tentativeG,
           h,
-          // Always store f as g + h. Selection per algo happens in the comparator
-          // (UCS uses g, Greedy uses h, A* uses f).
           f: tentativeG + h,
           parent: current.id,
         };
-        if (inFrontierIdx === -1) {
-          refFrontier.current.push(node);
-          setFrontierSet((prev) => new Set(prev).add(nid));
-        } else {
-          refFrontier.current[inFrontierIdx] = node;
-        }
+        refFrontier.current.push(node); // Push to end (stack behavior)
+        setFrontierSet((prev) => new Set(prev).add(nid));
         refCameFrom.current[nid] = current.id;
         refG.current[nid] = tentativeG;
         refH.current[nid] = h;
         refF.current[nid] = node.f;
+      } else {
+        // Other algorithms: check frontier duplicates and update if better
+        const inFrontierIdx = refFrontier.current.findIndex((n) => n.id === nid);
+        const oldG = refG.current[nid] ?? Infinity; // Use Infinity if not set
+        
+        // Add to frontier if not present, or update if we found a better path
+        if (inFrontierIdx === -1 || tentativeG < oldG) {
+          const h = manhattan(nx, ny, goal.x, goal.y);
+          const node = {
+            id: nid,
+            x: nx,
+            y: ny,
+            g: tentativeG,
+            h,
+            f: tentativeG + h,
+            parent: current.id,
+          };
+          
+          if (inFrontierIdx === -1) {
+            // Add new node to frontier
+            refFrontier.current.push(node);
+            setFrontierSet((prev) => new Set(prev).add(nid));
+          } else {
+            // Update existing node in frontier
+            refFrontier.current[inFrontierIdx] = node;
+          }
+          
+          // Update tracking records
+          refCameFrom.current[nid] = current.id;
+          refG.current[nid] = tentativeG;
+          refH.current[nid] = h;
+          refF.current[nid] = node.f;
+        }
       }
     }
 
     // update live metrics after expansion
     updateLiveMetricsPartial();
+  }
+
+  // Helper function for DFS direction priority
+  function getDirPriority(dx: number, dy: number): number {
+    // Priority: Right=0, Down=1, Up=2, Left=3
+    // (Higher number = lower priority = pushed later = explored first)
+    if (dx === 0 && dy === 1) return 0;  // Right
+    if (dx === 1 && dy === 0) return 1;  // Down  
+    if (dx === -1 && dy === 0) return 2; // Up
+    if (dx === 0 && dy === -1) return 3; // Left
+    return 4; // Unknown direction
   }
 
   function step() {
@@ -863,6 +924,8 @@ function reconstructPath(
 }
 
 function argMin<T>(arr: T[], key: (t: T) => number) {
+  if (arr.length === 0) return 0; // Safety check for empty arrays
+  
   let idx = 0;
   let best = key(arr[0]);
   for (let i = 1; i < arr.length; i++) {
