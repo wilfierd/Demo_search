@@ -388,9 +388,30 @@ export default function SearchVisualizer() {
     }
 
     // expand neighbors
-    const neigh = neighbors(current.x, current.y, rows, cols).filter(
+    let neigh = neighbors(current.x, current.y, rows, cols).filter(
       ([nx, ny]) => grid[nx][ny].type !== "wall",
     );
+
+    // DFS demo expectation: prefer going left when options tie.
+    // Because DFS uses a LIFO stack (push then pop), to explore "left first"
+    // we iterate neighbors so that left is pushed last.
+    if (algo === "DFS") {
+      const cx = current.x;
+      const cy = current.y;
+      const present = new Set(neigh.map(([nx, ny]) => idOf(nx, ny)));
+      const ordered: [number, number][] = [];
+      // Order to push: Up, Down, Right, Left (Left last => explored first)
+      const candidates: [number, number][] = [
+        [cx - 1, cy],
+        [cx + 1, cy],
+        [cx, cy + 1],
+        [cx, cy - 1],
+      ];
+      for (const [nx, ny] of candidates) {
+        if (present.has(idOf(nx, ny))) ordered.push([nx, ny]);
+      }
+      neigh = ordered;
+    }
 
     for (const [nx, ny] of neigh) {
       const nid = idOf(nx, ny);
