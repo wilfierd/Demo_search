@@ -1,0 +1,107 @@
+.App {
+    min-height: 100vh;
+    background-color: #f8fafc;
+}
+
+.App-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    text-align: center;
+    padding: 2rem 1rem;
+    margin-bottom: 2rem;
+}
+
+.App-header h1 {
+    margin: 0 0 0.5rem 0;
+    font-size: 2.5rem;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.App-header p {
+    margin: 0;
+    font-size: 1.1rem;
+    opacity: 0.9;
+    font-weight: 300;
+}
+
+/* Grid cell hover effects */
+.grid-cell {
+    transition: all 0.15s ease-in-out;
+}
+
+.grid-cell:hover {
+    transform: scale(1.1);
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Animation for algorithm visualization */
+@keyframes pulse-visited {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+    50% {
+        transform: scale(1.15);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+}
+
+@keyframes pulse-frontier {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.7);
+    }
+    70% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(14, 165, 233, 0);
+    }
+}
+
+@keyframes pulse-path {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+    70% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+}
+
+/* Apply animations */
+.bg-indigo-300 {
+    animation: pulse-visited 0.6s ease-out;
+}
+
+.bg-sky-300 {
+    animation: pulse-frontier 1s infinite;
+}
+
+.bg-emerald-400 {
+    animation: pulse-path 0.8s ease-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .App-header h1 {
+        font-size: 2rem;
+    }
+
+    .App-header p {
+        font-size: 1rem;
+    }
+}
