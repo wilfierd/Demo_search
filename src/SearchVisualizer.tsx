@@ -417,23 +417,10 @@ export default function SearchVisualizer() {
       ([nx, ny]) => grid[nx][ny].type !== "wall",
     );
 
-    // For DFS: We want to explore in a specific direction first to get the characteristic
-    // deep exploration behavior. Since we use the end of the array as stack top,
-    // we should add neighbors in reverse priority order (last added = first explored)
+    // For DFS: Add neighbors in reverse order so the stack explores in a natural pattern
+    // Since we use LIFO (last in, first out), reverse the neighbor order for DFS
     if (algo === "DFS") {
-      // Sort neighbors to get predictable DFS behavior
-      // Priority: Left, Up, Down, Right (so Right gets explored first)
-      neigh.sort((a, b) => {
-        const [ax, ay] = a;
-        const [bx, by] = b;
-        const [cx, cy] = [current.x, current.y];
-        
-        // Calculate direction relative to current position
-        const dirA = getDirPriority(ax - cx, ay - cy);
-        const dirB = getDirPriority(bx - cx, by - cy);
-        
-        return dirB - dirA; // Reverse order for stack (higher priority pushed last)
-      });
+      neigh.reverse(); // This will make DFS explore up first, then right, then left, then down
     }
 
     for (const [nx, ny] of neigh) {
@@ -443,26 +430,29 @@ export default function SearchVisualizer() {
 
       if (refExplored.current.has(nid)) continue;
 
-      // For DFS: don't check frontier duplicates, just add to stack
+      // For DFS: Simple stack behavior - add all unvisited neighbors
       // For other algorithms: check if node is already in frontier
       if (algo === "DFS") {
-        // DFS: just push to stack, no duplicate frontier checking
-        const h = manhattan(nx, ny, goal.x, goal.y);
-        const node = {
-          id: nid,
-          x: nx,
-          y: ny,
-          g: tentativeG,
-          h,
-          f: tentativeG + h,
-          parent: current.id,
-        };
-        refFrontier.current.push(node); // Push to end (stack behavior)
-        setFrontierSet((prev) => new Set(prev).add(nid));
-        refCameFrom.current[nid] = current.id;
-        refG.current[nid] = tentativeG;
-        refH.current[nid] = h;
-        refF.current[nid] = node.f;
+        // DFS: Add to stack if not already in frontier
+        const alreadyInFrontier = refFrontier.current.some(n => n.id === nid);
+        if (!alreadyInFrontier) {
+          const h = manhattan(nx, ny, goal.x, goal.y);
+          const node = {
+            id: nid,
+            x: nx,
+            y: ny,
+            g: tentativeG,
+            h,
+            f: tentativeG + h,
+            parent: current.id,
+          };
+          refFrontier.current.push(node); // Push to end (stack behavior)
+          setFrontierSet((prev) => new Set(prev).add(nid));
+          refCameFrom.current[nid] = current.id;
+          refG.current[nid] = tentativeG;
+          refH.current[nid] = h;
+          refF.current[nid] = node.f;
+        }
       } else {
         // Other algorithms: check frontier duplicates and update if better
         const inFrontierIdx = refFrontier.current.findIndex((n) => n.id === nid);
@@ -501,17 +491,6 @@ export default function SearchVisualizer() {
 
     // update live metrics after expansion
     updateLiveMetricsPartial();
-  }
-
-  // Helper function for DFS direction priority
-  function getDirPriority(dx: number, dy: number): number {
-    // Priority: Right=0, Down=1, Up=2, Left=3
-    // (Higher number = lower priority = pushed later = explored first)
-    if (dx === 0 && dy === 1) return 0;  // Right
-    if (dx === 1 && dy === 0) return 1;  // Down  
-    if (dx === -1 && dy === 0) return 2; // Up
-    if (dx === 0 && dy === -1) return 3; // Left
-    return 4; // Unknown direction
   }
 
   function step() {
