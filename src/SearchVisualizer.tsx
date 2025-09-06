@@ -642,7 +642,7 @@ export default function SearchVisualizer() {
 
   return (
     <div className="w-full flex flex-col gap-4 p-4">
-      <h1 className="text-2xl font-bold">AI Search – Live Demo Visualizer</h1>
+      <h1 className="text-2xl font-bold">AI Search Visualizer</h1>
       <div className="text-sm opacity-80">
         Click to draw walls/weights or set Start/Goal. Run the selected
         algorithm and watch expansions live. <b>Note:</b> BFS is optimal only
