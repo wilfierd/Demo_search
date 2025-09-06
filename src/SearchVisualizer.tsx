@@ -287,37 +287,7 @@ export default function SearchVisualizer() {
     // ====================================
   }
 
-  // Core stepping loop using setInterval
-  useEffect(() => {
-    if (!running || paused) return;
-    if (refDone.current) return;
-
-    const timer = setInterval(() => {
-      stepOnce();
-    }, speedMs);
-    return () => clearInterval(timer);
-  }, [running, paused, speedMs, algo]);
-
-  function updateLiveMetricsPartial() {
-    const visitedCount = refExplored.current.size;
-    const frontierCount = refFrontier.current.length;
-    if (visitedCount > refVisitedPeak.current)
-      refVisitedPeak.current = visitedCount;
-    if (frontierCount > refFrontierPeak.current)
-      refFrontierPeak.current = frontierCount;
-    const timeMs = refStartTime.current
-      ? performance.now() - refStartTime.current
-      : 0;
-    setLiveMetrics((prev) => ({
-      ...prev,
-      nodesExpanded: visitedCount,
-      visitedCurrent: visitedCount,
-      visitedPeak: refVisitedPeak.current,
-      frontierCurrent: frontierCount,
-      frontierPeak: refFrontierPeak.current,
-      timeMs,
-    }));
-  }
+  // Old tick loop and partial metrics removed; playback handled by effect below
 
   // Simplified step/animation: reveal one more visited node from precomputed plan
   function stepOnce() {
@@ -327,6 +297,9 @@ export default function SearchVisualizer() {
     const pt = res.visitedOrder[playIdx];
     const id = idOf(pt.x, pt.y);
     setVisited((prev) => new Set(prev).add(id));
+    // update frontier snapshot for this step
+    const frontierIds = res.frontierSnapshots[playIdx] ?? [];
+    setFrontierSet(new Set(frontierIds));
     const nodesExpanded = playIdx + 1;
     const timeMs = refStartTime.current ? performance.now() - refStartTime.current : 0;
     setLiveMetrics((prev) => ({
@@ -334,7 +307,7 @@ export default function SearchVisualizer() {
       nodesExpanded,
       visitedCurrent: nodesExpanded,
       visitedPeak: Math.max(prev.visitedPeak, nodesExpanded),
-      frontierCurrent: 0,
+      frontierCurrent: frontierIds.length,
       timeMs,
     }));
     setPlayIdx((i) => i + 1);
@@ -372,6 +345,7 @@ export default function SearchVisualizer() {
       if (res.found) {
         const pathIds = new Set(res.path.map((p) => idOf(p.x, p.y)));
         setPathSet(pathIds);
+        setFrontierSet(new Set());
         setLiveMetrics((prev) => ({
           ...prev,
           pathLength: res.pathLength,
