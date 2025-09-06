@@ -195,6 +195,14 @@ export default function SearchVisualizer() {
       ),
     );
     hardResetVisual();
+    
+    // ===== RANDOM OBSTACLES FUNCTION COMPLETED =====
+    // PRESENTATION NOTES:
+    // - Creates random maze with ~25% walls (black) and ~8% weights (yellow)
+    // - Preserves start (green) and goal (red) positions
+    // - Resets all algorithm states for fresh start
+    // - Use this to test algorithm behavior on different terrains
+    // ================================================
   }
 
   function clearBoard() {
@@ -203,6 +211,14 @@ export default function SearchVisualizer() {
       prev.map((row) => row.map((cell) => ({ ...cell, type: "empty" }))),
     );
     hardResetVisual();
+    
+    // ===== CLEAR BOARD FUNCTION COMPLETED =====
+    // PRESENTATION NOTES:
+    // - Removes all walls and weights from grid
+    // - Creates clean empty grid for new experiments
+    // - Resets all search algorithm states
+    // - Keeps start and goal positions unchanged
+    // ===========================================
   }
 
   function resetRunOnly() {
@@ -218,6 +234,15 @@ export default function SearchVisualizer() {
     refDone.current = false;
     setNoPath(false);
     setLiveMetrics(initialMetrics);
+    
+    // ===== RESET RUN FUNCTION COMPLETED =====
+    // PRESENTATION NOTES:
+    // - Clears all algorithm search states
+    // - Removes visited nodes (green), frontier (blue), path (purple)
+    // - Resets all internal data structures
+    // - Keeps grid layout unchanged (walls, weights, start, goal)
+    // - Ready for fresh algorithm run
+    // =========================================
   }
 
   function initRun() {
@@ -279,15 +304,41 @@ export default function SearchVisualizer() {
       setRunning(true);
       setPaused(false);
     }
+    
+    // ===== RUN FUNCTION COMPLETED =====
+    // PRESENTATION NOTES:
+    // - Starts continuous algorithm execution
+    // - If paused: resumes from current state
+    // - If stopped: initializes and starts fresh
+    // - Runs at speed controlled by speedMs slider
+    // - Shows real-time algorithm behavior
+    // ===================================
   }
 
   function pause() {
     if (!running) return;
     setPaused(true);
+    
+    // ===== PAUSE FUNCTION COMPLETED =====
+    // PRESENTATION NOTES:
+    // - Pauses algorithm execution mid-run
+    // - Preserves current search state
+    // - Can resume with run() button
+    // - Useful for explaining current algorithm state
+    // =====================================
   }
+  
   function stop() {
     setRunning(false);
     setPaused(false);
+    
+    // ===== STOP FUNCTION COMPLETED =====
+    // PRESENTATION NOTES:
+    // - Completely stops algorithm execution
+    // - Keeps final results visible (path, visited nodes)
+    // - Algorithm can be restarted with run() button
+    // - Final metrics show algorithm performance
+    // ====================================
   }
 
   // Core stepping loop using setInterval
@@ -328,6 +379,17 @@ export default function SearchVisualizer() {
     // choose next node based on algo
     const frontier = refFrontier.current;
     if (frontier.length === 0) {
+      // ===== NO PATH FOUND =====
+      // PRESENTATION NOTES:
+      // All algorithms will detect when no path exists:
+      // - The frontier (queue/stack) becomes empty
+      // - No more nodes to explore
+      // - Goal is unreachable (blocked by walls)
+      // 
+      // This shows the completeness property of these algorithms:
+      // they will always terminate and report if no solution exists
+      // ==========================
+      
       refDone.current = true;
       setRunning(false);
       updateLiveMetricsPartial();
@@ -335,6 +397,16 @@ export default function SearchVisualizer() {
       return;
     }
 
+    // ===== NODE SELECTION STRATEGY =====
+    // PRESENTATION NOTES - This is the KEY difference between algorithms:
+    //
+    // BFS: Queue (FIFO) - explores closest nodes first (breadth-wise)
+    // DFS: Stack (LIFO) - explores deepest nodes first (depth-wise)  
+    // UCS: Priority queue by cost (g) - explores cheapest path first
+    // Greedy: Priority queue by heuristic (h) - explores toward goal
+    // A*: Priority queue by f=g+h - optimal balance of cost and direction
+    // ====================================
+    
     let idx = 0;
     if (algo === "BFS")
       idx = 0; // queue (FIFO - first in, first out)
@@ -348,6 +420,30 @@ export default function SearchVisualizer() {
 
     // goal check BEFORE adding to visited (important for optimal path finding)
     if (current.x === goal.x && current.y === goal.y) {
+      // ===== ALGORITHM FINISHED - GOAL REACHED! =====
+      // PRESENTATION NOTES:
+      // 
+      // BFS: Guarantees shortest path (optimal for unweighted graphs)
+      //      - Explores layer by layer (breadth-first)
+      //      - High memory usage but finds optimal solution
+      //
+      // DFS: May not find shortest path but uses less memory
+      //      - Explores deeply in one direction first (depth-first)
+      //      - Good for exploring all possible paths
+      //
+      // UCS: Guarantees optimal path for weighted graphs
+      //      - Always expands lowest cost node first
+      //      - Slower but finds cheapest path
+      //
+      // Greedy: Fast but not optimal
+      //         - Uses heuristic to guide search toward goal
+      //         - May get stuck in local optima
+      //
+      // A*: Best of both worlds - optimal AND efficient
+      //     - Combines actual cost (g) + heuristic (h)
+      //     - Guaranteed optimal if heuristic is admissible
+      // ===============================================
+
       // Add to visited for accurate metrics
       refExplored.current.add(current.id);
       setVisited((prev) => new Set(prev).add(current.id));
@@ -417,10 +513,12 @@ export default function SearchVisualizer() {
       ([nx, ny]) => grid[nx][ny].type !== "wall",
     );
 
-    // For DFS: Add neighbors in reverse order so the stack explores in a natural pattern
-    // Since we use LIFO (last in, first out), reverse the neighbor order for DFS
+    // For DFS: Since we use LIFO stack, reverse the order so we get predictable exploration
+    // neighbors() returns: up, down, left, right
+    // We want to explore: up first, so we reverse to: right, left, down, up
+    // Then stack pops: up, down, left, right (which is what we want)
     if (algo === "DFS") {
-      neigh.reverse(); // This will make DFS explore up first, then right, then left, then down
+      neigh.reverse();
     }
 
     for (const [nx, ny] of neigh) {
@@ -454,37 +552,61 @@ export default function SearchVisualizer() {
           refF.current[nid] = node.f;
         }
       } else {
-        // Other algorithms: check frontier duplicates and update if better
-        const inFrontierIdx = refFrontier.current.findIndex((n) => n.id === nid);
-        const oldG = refG.current[nid] ?? Infinity; // Use Infinity if not set
-        
-        // Add to frontier if not present, or update if we found a better path
-        if (inFrontierIdx === -1 || tentativeG < oldG) {
-          const h = manhattan(nx, ny, goal.x, goal.y);
-          const node = {
-            id: nid,
-            x: nx,
-            y: ny,
-            g: tentativeG,
-            h,
-            f: tentativeG + h,
-            parent: current.id,
-          };
-          
-          if (inFrontierIdx === -1) {
-            // Add new node to frontier
-            refFrontier.current.push(node);
+        // For BFS, Greedy, UCS, A*: handle differently
+        if (algo === "BFS") {
+          // BFS: Simple queue behavior - just add if not visited and not in frontier
+          const alreadyInFrontier = refFrontier.current.some(n => n.id === nid);
+          if (!alreadyInFrontier) {
+            const h = manhattan(nx, ny, goal.x, goal.y);
+            const node = {
+              id: nid,
+              x: nx,
+              y: ny,
+              g: tentativeG,
+              h,
+              f: tentativeG + h,
+              parent: current.id,
+            };
+            refFrontier.current.push(node); // Add to queue (BFS doesn't care about cost)
             setFrontierSet((prev) => new Set(prev).add(nid));
-          } else {
-            // Update existing node in frontier
-            refFrontier.current[inFrontierIdx] = node;
+            refCameFrom.current[nid] = current.id;
+            refG.current[nid] = tentativeG;
+            refH.current[nid] = h;
+            refF.current[nid] = node.f;
           }
+        } else {
+          // UCS, Greedy, A*: check frontier duplicates and update if better path found
+          const inFrontierIdx = refFrontier.current.findIndex((n) => n.id === nid);
+          const oldG = refG.current[nid] ?? Infinity; // Use Infinity if not set
           
-          // Update tracking records
-          refCameFrom.current[nid] = current.id;
-          refG.current[nid] = tentativeG;
-          refH.current[nid] = h;
-          refF.current[nid] = node.f;
+          // Add to frontier if not present, or update if we found a better path
+          if (inFrontierIdx === -1 || tentativeG < oldG) {
+            const h = manhattan(nx, ny, goal.x, goal.y);
+            const node = {
+              id: nid,
+              x: nx,
+              y: ny,
+              g: tentativeG,
+              h,
+              f: tentativeG + h,
+              parent: current.id,
+            };
+            
+            if (inFrontierIdx === -1) {
+              // Add new node to frontier
+              refFrontier.current.push(node);
+              setFrontierSet((prev) => new Set(prev).add(nid));
+            } else {
+              // Update existing node in frontier
+              refFrontier.current[inFrontierIdx] = node;
+            }
+            
+            // Update tracking records
+            refCameFrom.current[nid] = current.id;
+            refG.current[nid] = tentativeG;
+            refH.current[nid] = h;
+            refF.current[nid] = node.f;
+          }
         }
       }
     }
@@ -500,6 +622,15 @@ export default function SearchVisualizer() {
       setPaused(true);
     }
     stepOnce();
+    
+    // ===== STEP FUNCTION COMPLETED =====
+    // PRESENTATION NOTES:
+    // - Executes ONE step of the selected algorithm
+    // - If not running: initializes algorithm and starts
+    // - If running: advances algorithm by one iteration
+    // - Perfect for step-by-step demonstration
+    // - Shows exactly how each algorithm explores nodes
+    // ====================================
   }
 
   const cellSize = useMemo(() => {
@@ -677,7 +808,7 @@ export default function SearchVisualizer() {
           value={liveMetrics.visitedPeak}
           hint="state space touched"
         />
-        <Stat label="Time" value={`${liveMetrics.timeMs.toFixed(0)} ms`} />
+        <Stat label="TiBme" value={`${liveMetrics.timeMs.toFixed(0)} ms`} />
       </div>
       {noPath && (
         <div className="text-sm text-rose-600">
@@ -728,33 +859,6 @@ export default function SearchVisualizer() {
             })}
           </div>
         ))}
-      </div>
-
-      {/* Tips */}
-      <div className="text-sm opacity-80">
-        <p className="mb-2 font-medium">How to demo</p>
-        <ul className="list-disc ml-5 space-y-1">
-          <li>
-            Chọn <b>BFS</b>, bấm Random, Run → sóng nở đồng tâm, chạm goal =
-            shortest path (khi bước đều).
-          </li>
-          <li>
-            Chuyển <b>Weights</b>, tô vài ô vàng gần đường thẳng. Chọn{" "}
-            <b>UCS</b> → thuật toán đi vòng nhưng rẻ hơn.
-          </li>
-          <li>
-            Chọn <b>Greedy</b> với tường chắn ngay trước mặt → dễ lao vào bế
-            tắc, phải vòng lại.
-          </li>
-          <li>
-            Chọn <b>A*</b> → mở ít node hơn UCS/BFS (nhanh hơn khi heuristic
-            tốt). Tăng speed để thấy rõ.
-          </li>
-          <li>
-            Thiếu RAM (ý tưởng): tăng Rows/Cols cho thấy BFS ngốn nhiều
-            visited/frontier hơn A*.
-          </li>
-        </ul>
       </div>
 
       {/* History / Comparison */}
