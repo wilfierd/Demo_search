@@ -553,8 +553,9 @@ export default function SearchVisualizer() {
         }
       } else {
         // For BFS, Greedy, UCS, A*: handle differently
-        if (algo === "BFS") {
-          // BFS: Simple queue behavior - just add if not visited and not in frontier
+        if (algo === "BFS" || algo === "Greedy") {
+          // BFS & Greedy: Simple behavior - just add if not visited and not in frontier
+          // Neither cares about finding better paths - they use first path found
           const alreadyInFrontier = refFrontier.current.some(n => n.id === nid);
           if (!alreadyInFrontier) {
             const h = manhattan(nx, ny, goal.x, goal.y);
@@ -567,7 +568,7 @@ export default function SearchVisualizer() {
               f: tentativeG + h,
               parent: current.id,
             };
-            refFrontier.current.push(node); // Add to queue (BFS doesn't care about cost)
+            refFrontier.current.push(node);
             setFrontierSet((prev) => new Set(prev).add(nid));
             refCameFrom.current[nid] = current.id;
             refG.current[nid] = tentativeG;
@@ -575,7 +576,7 @@ export default function SearchVisualizer() {
             refF.current[nid] = node.f;
           }
         } else {
-          // UCS, Greedy, A*: check frontier duplicates and update if better path found
+          // UCS, A*: check frontier duplicates and update if better path found
           const inFrontierIdx = refFrontier.current.findIndex((n) => n.id === nid);
           const oldG = refG.current[nid] ?? Infinity; // Use Infinity if not set
           
