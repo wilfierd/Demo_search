@@ -19,6 +19,40 @@ A React-based interactive visualization tool for pathfinding algorithms includin
 - **Greedy Search**: Uses heuristic to guide search toward goal
 - **A* Search**: Combines UCS and Greedy for optimal pathfinding
 
+### Standalone BFS module
+
+If you want to run BFS independently of the React visualizer, a small, self-contained implementation is available at `src/algorithms/bfs.ts`.
+
+Quick usage:
+
+```
+import { bfs, type GridCell } from "./src/algorithms/bfs";
+
+// Build a grid
+const R = 5, C = 8;
+const grid: GridCell[][] = Array.from({ length: R }, (_, i) =>
+  Array.from({ length: C }, (_, j) => ({ x: i, y: j, type: "empty" as const }))
+);
+
+// Add a wall
+grid[1][3].type = "wall";
+
+// Run BFS (4-neighbor, ignores weights for ordering)
+const res = bfs(grid, { x: 0, y: 0 }, { x: 4, y: 7 });
+
+console.log({
+  found: res.found,
+  pathLength: res.pathLength,
+  totalCost: res.totalCost,
+  nodesExpanded: res.nodesExpanded,
+});
+// res.path is an array of {x,y} points; res.visitedOrder is the expansion order.
+```
+
+Notes:
+- BFS returns the shortest path in number of steps for unweighted grids. If the grid has `weight` cells, BFS still explores by layers (ignoring weight for ordering), so results may not be cost-optimal.
+- The weighting convention matches the visualizer: `empty` cells cost 1, `weight` cells cost 5 (used only to compute `totalCost`, not to guide exploration).
+
 ## Getting Started
 
 ### Prerequisites

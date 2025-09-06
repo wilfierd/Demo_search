@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { bfs } from "./algorithms/bfs";
+import { dfs } from "./algorithms/dfs";
+import { ucs } from "./algorithms/ucs";
+import { greedy } from "./algorithms/greedy";
+import { astar } from "./algorithms/astar";
+import { idOf, type GridCell, type Point, type SearchResult } from "./algorithms/types";
 
 // === Utility types ===
 const ALGOS = ["BFS", "DFS", "UCS", "Greedy", "A*"] as const;
@@ -13,15 +19,7 @@ type Cell = {
 };
 
 // Node data tracked during search
-type NodeData = {
-  id: string;
-  x: number;
-  y: number;
-  g: number; // cost so far
-  h: number; // heuristic
-  f: number; // g + h
-  parent?: string;
-};
+// Legacy NodeData removed; logic moved to standalone modules
 
 type Metrics = {
   nodesExpanded: number; // visited size
@@ -35,13 +33,7 @@ type Metrics = {
   found: boolean;
 };
 
-function idOf(x: number, y: number) {
-  return `${x},${y}`;
-}
-
-function manhattan(ax: number, ay: number, bx: number, by: number) {
-  return Math.abs(ax - bx) + Math.abs(ay - by);
-}
+// idOf and manhattan now imported from algorithms/types as needed
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
@@ -101,17 +93,10 @@ export default function SearchVisualizer() {
     }>
   >([]);
 
-  // Internal algorithm structures (kept in refs so they persist across renders)
-  const refFrontier = useRef<NodeData[]>([]);
-  const refCameFrom = useRef<Record<string, string | undefined>>({});
-  const refG = useRef<Record<string, number>>({});
-  const refH = useRef<Record<string, number>>({});
-  const refF = useRef<Record<string, number>>({});
-  const refExplored = useRef<Set<string>>(new Set());
-  const refDone = useRef(false);
+  // Precomputed search plan/result and playback state
+  const refPlan = useRef<SearchResult | null>(null);
   const refStartTime = useRef<number | null>(null);
-  const refFrontierPeak = useRef(0);
-  const refVisitedPeak = useRef(0);
+  const [playIdx, setPlayIdx] = useState(0); // how many visited nodes are shown
 
   // Mouse drag painting
   const mouseDownRef = useRef(false);
@@ -135,13 +120,8 @@ export default function SearchVisualizer() {
     setVisited(new Set());
     setFrontierSet(new Set());
     setPathSet(new Set());
-    refFrontier.current = [];
-    refCameFrom.current = {};
-    refG.current = {};
-    refH.current = {};
-    refF.current = {};
-    refExplored.current = new Set();
-    refDone.current = false;
+    refPlan.current = null;
+    setPlayIdx(0);
     setRunning(false);
     setPaused(false);
     setNoPath(false);
@@ -225,13 +205,8 @@ export default function SearchVisualizer() {
     setVisited(new Set());
     setFrontierSet(new Set());
     setPathSet(new Set());
-    refFrontier.current = [];
-    refCameFrom.current = {};
-    refG.current = {};
-    refH.current = {};
-    refF.current = {};
-    refExplored.current = new Set();
-    refDone.current = false;
+    refPlan.current = null;
+    setPlayIdx(0);
     setNoPath(false);
     setLiveMetrics(initialMetrics);
     
@@ -245,53 +220,14 @@ export default function SearchVisualizer() {
     // =========================================
   }
 
-  function initRun() {
-    resetRunOnly();
-    
-    // Safety checks
-    if (start.x === goal.x && start.y === goal.y) {
-      setNoPath(false);
-      refDone.current = true;
-      setRunning(false);
-      return;
-    }
-    
-    if (grid[start.x][start.y].type === "wall" || grid[goal.x][goal.y].type === "wall") {
-      setNoPath(true);
-      refDone.current = true;
-      setRunning(false);
-      return;
-    }
-    
-    const sId = idOf(start.x, start.y);
-    const sNode: NodeData = {
-      id: sId,
-      x: start.x,
-      y: start.y,
-      g: 0,
-      h: manhattan(start.x, start.y, goal.x, goal.y),
-      f: manhattan(start.x, start.y, goal.x, goal.y),
-      parent: undefined,
-    };
-    refFrontier.current = [sNode];
-    refG.current[sId] = 0;
-    refH.current[sId] = sNode.h;
-    refF.current[sId] = sNode.f;
-    setFrontierSet(new Set([sId]));
-    refStartTime.current = performance.now();
-    refFrontierPeak.current = 1;
-    refVisitedPeak.current = 0;
-    setLiveMetrics({
-      nodesExpanded: 0,
-      visitedCurrent: 0,
-      visitedPeak: 0,
-      frontierCurrent: 1,
-      frontierPeak: 1,
-      pathLength: 0,
-      totalCost: 0,
-      timeMs: 0,
-      found: false,
-    });
+  function computePlan(): SearchResult {
+    // Run selected algorithm to completion and return its result
+    const asGrid: GridCell[][] = grid.map((row) => row.map((c) => ({ ...c })));
+    if (algo === "BFS") return bfs(asGrid, start as Point, goal as Point);
+    if (algo === "DFS") return dfs(asGrid, start as Point, goal as Point);
+    if (algo === "UCS") return ucs(asGrid, start as Point, goal as Point);
+    if (algo === "Greedy") return greedy(asGrid, start as Point, goal as Point);
+    return astar(asGrid, start as Point, goal as Point);
   }
 
   function run() {
@@ -300,19 +236,29 @@ export default function SearchVisualizer() {
       return;
     }
     if (!running) {
-      initRun();
+      resetRunOnly();
+      const res = computePlan();
+      refPlan.current = res;
+      refStartTime.current = performance.now();
+      setVisited(new Set());
+      setPathSet(new Set());
+      setFrontierSet(new Set()); // frontier not animated in simplified mode
+      setNoPath(!res.found);
+      setPlayIdx(0);
+      setLiveMetrics({
+        nodesExpanded: 0,
+        visitedCurrent: 0,
+        visitedPeak: 0,
+        frontierCurrent: 0,
+        frontierPeak: res.frontierPeak,
+        pathLength: 0,
+        totalCost: 0,
+        timeMs: 0,
+        found: false,
+      });
       setRunning(true);
       setPaused(false);
     }
-    
-    // ===== RUN FUNCTION COMPLETED =====
-    // PRESENTATION NOTES:
-    // - Starts continuous algorithm execution
-    // - If paused: resumes from current state
-    // - If stopped: initializes and starts fresh
-    // - Runs at speed controlled by speedMs slider
-    // - Shows real-time algorithm behavior
-    // ===================================
   }
 
   function pause() {
@@ -373,252 +319,34 @@ export default function SearchVisualizer() {
     }));
   }
 
+  // Simplified step/animation: reveal one more visited node from precomputed plan
   function stepOnce() {
-    if (refDone.current) return;
-
-    // choose next node based on algo
-    const frontier = refFrontier.current;
-    if (frontier.length === 0) {
-      // ===== NO PATH FOUND =====
-      // PRESENTATION NOTES:
-      // All algorithms will detect when no path exists:
-      // - The frontier (queue/stack) becomes empty
-      // - No more nodes to explore
-      // - Goal is unreachable (blocked by walls)
-      // 
-      // This shows the completeness property of these algorithms:
-      // they will always terminate and report if no solution exists
-      // ==========================
-      
-      refDone.current = true;
-      setRunning(false);
-      updateLiveMetricsPartial();
-      setNoPath(true);
-      return;
-    }
-
-    // ===== NODE SELECTION STRATEGY =====
-    // PRESENTATION NOTES - This is the KEY difference between algorithms:
-    //
-    // BFS: Queue (FIFO) - explores closest nodes first (breadth-wise)
-    // DFS: Stack (LIFO) - explores deepest nodes first (depth-wise)  
-    // UCS: Priority queue by cost (g) - explores cheapest path first
-    // Greedy: Priority queue by heuristic (h) - explores toward goal
-    // A*: Priority queue by f=g+h - optimal balance of cost and direction
-    // ====================================
-    
-    let idx = 0;
-    if (algo === "BFS")
-      idx = 0; // queue (FIFO - first in, first out)
-    else if (algo === "DFS")
-      idx = frontier.length - 1; // stack (LIFO - last in, first out)
-    else if (algo === "UCS") idx = argMin(frontier, (n) => n.g);
-    else if (algo === "Greedy") idx = argMin(frontier, (n) => n.h);
-    else if (algo === "A*") idx = argMin(frontier, (n) => n.f);
-
-    const current = frontier.splice(idx, 1)[0];
-
-    // goal check BEFORE adding to visited (important for optimal path finding)
-    if (current.x === goal.x && current.y === goal.y) {
-      // ===== ALGORITHM FINISHED - GOAL REACHED! =====
-      // PRESENTATION NOTES:
-      // 
-      // BFS: Guarantees shortest path (optimal for unweighted graphs)
-      //      - Explores layer by layer (breadth-first)
-      //      - High memory usage but finds optimal solution
-      //
-      // DFS: May not find shortest path but uses less memory
-      //      - Explores deeply in one direction first (depth-first)
-      //      - Good for exploring all possible paths
-      //
-      // UCS: Guarantees optimal path for weighted graphs
-      //      - Always expands lowest cost node first
-      //      - Slower but finds cheapest path
-      //
-      // Greedy: Fast but not optimal
-      //         - Uses heuristic to guide search toward goal
-      //         - May get stuck in local optima
-      //
-      // A*: Best of both worlds - optimal AND efficient
-      //     - Combines actual cost (g) + heuristic (h)
-      //     - Guaranteed optimal if heuristic is admissible
-      // ===============================================
-
-      // Add to visited for accurate metrics
-      refExplored.current.add(current.id);
-      setVisited((prev) => new Set(prev).add(current.id));
-      setFrontierSet((prev) => {
-        const s = new Set(prev);
-        s.delete(current.id);
-        return s;
-      });
-
-      const pathIds = reconstructPath(refCameFrom.current, current.id);
-      setPathSet(new Set(pathIds));
-      const visitedCount = refExplored.current.size;
-      const frontierCount = refFrontier.current.length;
-      if (visitedCount > refVisitedPeak.current)
-        refVisitedPeak.current = visitedCount;
-      if (frontierCount > refFrontierPeak.current)
-        refFrontierPeak.current = frontierCount;
-      const timeMs = refStartTime.current
-        ? performance.now() - refStartTime.current
-        : 0;
-      const pathLength = Math.max(0, pathIds.length - 1);
-      const totalCost = current.g; // g at goal is total path cost
-
-      setLiveMetrics({
-        nodesExpanded: visitedCount,
-        visitedCurrent: visitedCount,
-        visitedPeak: refVisitedPeak.current,
-        frontierCurrent: frontierCount,
-        frontierPeak: refFrontierPeak.current,
-        pathLength,
-        totalCost,
-        timeMs,
-        found: true,
-      });
-
-      setHistory((prev) =>
-        [
-          {
-            algo,
-            nodesExpanded: visitedCount,
-            pathLength,
-            totalCost,
-            frontierPeak: refFrontierPeak.current,
-            timeMs,
-          },
-          ...prev,
-        ].slice(0, 8),
-      );
-
-      refDone.current = true;
-      setRunning(false);
-      setNoPath(false);
-      return;
-    }
-
-    // book-keeping: add current node to visited set
-    refExplored.current.add(current.id);
-    setVisited((prev) => new Set(prev).add(current.id));
-    setFrontierSet((prev) => {
-      const s = new Set(prev);
-      s.delete(current.id);
-      return s;
-    });
-
-    // expand neighbors
-    let neigh = neighbors(current.x, current.y, rows, cols).filter(
-      ([nx, ny]) => grid[nx][ny].type !== "wall",
-    );
-
-    // For DFS: Since we use LIFO stack, reverse the order so we get predictable exploration
-    // neighbors() returns: up, down, left, right
-    // We want to explore: up first, so we reverse to: right, left, down, up
-    // Then stack pops: up, down, left, right (which is what we want)
-    if (algo === "DFS") {
-      neigh.reverse();
-    }
-
-    for (const [nx, ny] of neigh) {
-      const nid = idOf(nx, ny);
-      const w = grid[nx][ny].type === "weight" ? 5 : 1; // weighted cells cost 5
-      const tentativeG = current.g + w;
-
-      if (refExplored.current.has(nid)) continue;
-
-      // For DFS: Simple stack behavior - add all unvisited neighbors
-      // For other algorithms: check if node is already in frontier
-      if (algo === "DFS") {
-        // DFS: Add to stack if not already in frontier
-        const alreadyInFrontier = refFrontier.current.some(n => n.id === nid);
-        if (!alreadyInFrontier) {
-          const h = manhattan(nx, ny, goal.x, goal.y);
-          const node = {
-            id: nid,
-            x: nx,
-            y: ny,
-            g: tentativeG,
-            h,
-            f: tentativeG + h,
-            parent: current.id,
-          };
-          refFrontier.current.push(node); // Push to end (stack behavior)
-          setFrontierSet((prev) => new Set(prev).add(nid));
-          refCameFrom.current[nid] = current.id;
-          refG.current[nid] = tentativeG;
-          refH.current[nid] = h;
-          refF.current[nid] = node.f;
-        }
-      } else {
-        // For BFS, Greedy, UCS, A*: handle differently
-        if (algo === "BFS" || algo === "Greedy") {
-          // BFS & Greedy: Simple behavior - just add if not visited and not in frontier
-          // Neither cares about finding better paths - they use first path found
-          const alreadyInFrontier = refFrontier.current.some(n => n.id === nid);
-          if (!alreadyInFrontier) {
-            const h = manhattan(nx, ny, goal.x, goal.y);
-            const node = {
-              id: nid,
-              x: nx,
-              y: ny,
-              g: tentativeG,
-              h,
-              f: tentativeG + h,
-              parent: current.id,
-            };
-            refFrontier.current.push(node);
-            setFrontierSet((prev) => new Set(prev).add(nid));
-            refCameFrom.current[nid] = current.id;
-            refG.current[nid] = tentativeG;
-            refH.current[nid] = h;
-            refF.current[nid] = node.f;
-          }
-        } else {
-          // UCS, A*: check frontier duplicates and update if better path found
-          const inFrontierIdx = refFrontier.current.findIndex((n) => n.id === nid);
-          const oldG = refG.current[nid] ?? Infinity; // Use Infinity if not set
-          
-          // Add to frontier if not present, or update if we found a better path
-          if (inFrontierIdx === -1 || tentativeG < oldG) {
-            const h = manhattan(nx, ny, goal.x, goal.y);
-            const node = {
-              id: nid,
-              x: nx,
-              y: ny,
-              g: tentativeG,
-              h,
-              f: tentativeG + h,
-              parent: current.id,
-            };
-            
-            if (inFrontierIdx === -1) {
-              // Add new node to frontier
-              refFrontier.current.push(node);
-              setFrontierSet((prev) => new Set(prev).add(nid));
-            } else {
-              // Update existing node in frontier
-              refFrontier.current[inFrontierIdx] = node;
-            }
-            
-            // Update tracking records
-            refCameFrom.current[nid] = current.id;
-            refG.current[nid] = tentativeG;
-            refH.current[nid] = h;
-            refF.current[nid] = node.f;
-          }
-        }
-      }
-    }
-
-    // update live metrics after expansion
-    updateLiveMetricsPartial();
+    const res = refPlan.current;
+    if (!res) return;
+    if (playIdx >= res.visitedOrder.length) return;
+    const pt = res.visitedOrder[playIdx];
+    const id = idOf(pt.x, pt.y);
+    setVisited((prev) => new Set(prev).add(id));
+    const nodesExpanded = playIdx + 1;
+    const timeMs = refStartTime.current ? performance.now() - refStartTime.current : 0;
+    setLiveMetrics((prev) => ({
+      ...prev,
+      nodesExpanded,
+      visitedCurrent: nodesExpanded,
+      visitedPeak: Math.max(prev.visitedPeak, nodesExpanded),
+      frontierCurrent: 0,
+      timeMs,
+    }));
+    setPlayIdx((i) => i + 1);
   }
 
   function step() {
     if (!running) {
-      initRun();
+      resetRunOnly();
+      const res = computePlan();
+      refPlan.current = res;
+      refStartTime.current = performance.now();
+      setNoPath(!res.found);
       setRunning(true);
       setPaused(true);
     }
@@ -633,6 +361,48 @@ export default function SearchVisualizer() {
     // - Shows exactly how each algorithm explores nodes
     // ====================================
   }
+
+  // Drive animation when running
+  useEffect(() => {
+    if (!running || paused) return;
+    const res = refPlan.current;
+    if (!res) return;
+    if (playIdx >= res.visitedOrder.length) {
+      // Finished revealing visited nodes; render path if found
+      if (res.found) {
+        const pathIds = new Set(res.path.map((p) => idOf(p.x, p.y)));
+        setPathSet(pathIds);
+        setLiveMetrics((prev) => ({
+          ...prev,
+          pathLength: res.pathLength,
+          totalCost: res.totalCost,
+          visitedPeak: res.visitedPeak,
+          frontierPeak: res.frontierPeak,
+          found: true,
+        }));
+        setHistory((prev) => [
+          {
+            algo,
+            nodesExpanded: res.nodesExpanded,
+            pathLength: res.pathLength,
+            totalCost: res.totalCost,
+            frontierPeak: res.frontierPeak,
+            timeMs: res.timeMs,
+          },
+          ...prev,
+        ].slice(0, 8));
+        setNoPath(false);
+      } else {
+        setNoPath(true);
+      }
+      setRunning(false);
+      return;
+    }
+    const handle = setTimeout(() => {
+      stepOnce();
+    }, speedMs);
+    return () => clearTimeout(handle);
+  }, [running, paused, speedMs, playIdx, algo]);
 
   const cellSize = useMemo(() => {
     // keep grid roughly responsive
@@ -980,44 +750,4 @@ function setCell(prev: Cell[][], r: number, c: number, t: "wall" | "weight") {
   );
 }
 
-function neighbors(
-  x: number,
-  y: number,
-  R: number,
-  C: number,
-): [number, number][] {
-  const out: [number, number][] = [];
-  if (x > 0) out.push([x - 1, y]);
-  if (x < R - 1) out.push([x + 1, y]);
-  if (y > 0) out.push([x, y - 1]);
-  if (y < C - 1) out.push([x, y + 1]);
-  return out;
-}
-
-function reconstructPath(
-  came: Record<string, string | undefined>,
-  goalId: string,
-) {
-  const path: string[] = [];
-  let cur: string | undefined = goalId;
-  while (cur) {
-    path.push(cur);
-    cur = came[cur];
-  }
-  return path.reverse();
-}
-
-function argMin<T>(arr: T[], key: (t: T) => number) {
-  if (arr.length === 0) return 0; // Safety check for empty arrays
-  
-  let idx = 0;
-  let best = key(arr[0]);
-  for (let i = 1; i < arr.length; i++) {
-    const v = key(arr[i]);
-    if (v < best) {
-      best = v;
-      idx = i;
-    }
-  }
-  return idx;
-}
+// Removed in-component search helpers; algorithms now live in src/algorithms/*
